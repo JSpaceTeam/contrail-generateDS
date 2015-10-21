@@ -10,6 +10,8 @@ from ifmap_frontend import IFMapApiGenerator
 from java_api import JavaApiGenerator
 from golang_api import GoLangApiGenerator
 
+reserved = {'config-root', 'domain','project','global-system-config','namespace'}
+
 class IFMapGenerator(object):
     """ IFMap generator
         Step 1. Build a list of data structures to be generated.
@@ -17,7 +19,7 @@ class IFMapGenerator(object):
         Step 3. Generate C++ decoder
         Step 4. Generate xsd corresponding to data structures.
     """
-    def __init__(self, parser, genCategory):
+    def __init__(self, parser, genCategory, fixup_prop = False):
         self._Parser = parser
         self._idl_parser = None
         self._Identifiers = {}
@@ -26,6 +28,7 @@ class IFMapGenerator(object):
         self._DeferredElements = []
         self._cTypesDict = {}
         self._genCategory = genCategory
+        self._fixupProp = fixup_prop
 
     def _BuildDataModel(self, children):
         for child in children:
@@ -49,7 +52,19 @@ class IFMapGenerator(object):
         for meta in self._Metadata.values():
             meta.Resolve(self._Parser.ElementDict, self._cTypesDict)
 
+        if self._fixupProp:
+            for ident in self._Identifiers.values():
+                self.__fixup_ident(ident)
 
+    def __fixup_ident(self, ident):
+        name = ident.getName()
+        if name in reserved:
+            return
+        props = ident.getProperties()
+        for prop in props:
+            prop_name = prop.getName()
+            if name + '-' in prop_name:
+                prop._name = (prop_name.partition(name+'-')[-1])
     def _ProcessElement(self, element):
         """ Process an element from the schema. This can be either an
             identifier or meta-data element.

@@ -669,7 +669,7 @@ if __name__ == '__main__':
                 'namespacedef=', 'external-encoding=',
                 'member-specs=', 'no-dates', 'no-versions',
                 'no-questions', 'session=', 'generator-category=',
-                'generated-language=', 'version',
+                'generated-language=', 'fixup-property','version',
                 ])
         except getopt.GetoptError, exp:
             usage()
@@ -763,6 +763,8 @@ if __name__ == '__main__':
                 self.GenerateProperties = 1
             elif option[0] == '--no-dates':
                 self.NoDates = True
+            elif option[0] == "--fixup-property":
+                self.FixUpProp = True
             elif option[0] == '--no-versions':
                 self.NoVersion = True
             elif option[0] == '--subclass-suffix':
@@ -1078,7 +1080,7 @@ if __name__ == '__main__':
               self.genCategory == 'ifmap-frontend' or
               self.genCategory == 'java-api' or
               self.genCategory == 'golang-api'):
-            self._Generator = IFMapGenerator(self, self.genCategory)
+            self._Generator = IFMapGenerator(self, self.genCategory, self.FixUpProp)
         self._Generator.setLanguage(self.genLang)
 
     def _load_config(self):
