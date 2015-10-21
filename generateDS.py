@@ -687,6 +687,8 @@ if __name__ == '__main__':
         self.NoQuestions = False
         showVersion = False
         self.xschemaFileName = None
+        self.FixUpProp = False
+
         for option in options:
             if option[0] == '--session':
                 sessionFilename = option[1]
