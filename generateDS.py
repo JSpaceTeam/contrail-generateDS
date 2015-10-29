@@ -669,7 +669,7 @@ if __name__ == '__main__':
                 'namespacedef=', 'external-encoding=',
                 'member-specs=', 'no-dates', 'no-versions',
                 'no-questions', 'session=', 'generator-category=',
-                'generated-language=', 'fixup-property','version',
+                'generated-language=', 'fixup-property','module-name=','version',
                 ])
         except getopt.GetoptError, exp:
             usage()
@@ -688,7 +688,7 @@ if __name__ == '__main__':
         showVersion = False
         self.xschemaFileName = None
         self.FixUpProp = False
-
+        self.moduleName = ""
         for option in options:
             if option[0] == '--session':
                 sessionFilename = option[1]
@@ -767,6 +767,8 @@ if __name__ == '__main__':
                 self.NoDates = True
             elif option[0] == "--fixup-property":
                 self.FixUpProp = True
+            elif option[0] == "--module-name":
+                self.moduleName = option[1]
             elif option[0] == '--no-versions':
                 self.NoVersion = True
             elif option[0] == '--subclass-suffix':
@@ -1082,7 +1084,7 @@ if __name__ == '__main__':
               self.genCategory == 'ifmap-frontend' or
               self.genCategory == 'java-api' or
               self.genCategory == 'golang-api'):
-            self._Generator = IFMapGenerator(self, self.genCategory, self.FixUpProp)
+            self._Generator = IFMapGenerator(self, self.genCategory, self.FixUpProp, self.moduleName)
         self._Generator.setLanguage(self.genLang)
 
     def _load_config(self):

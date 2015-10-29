@@ -10,7 +10,8 @@ from ifmap_frontend import IFMapApiGenerator
 from java_api import JavaApiGenerator
 from golang_api import GoLangApiGenerator
 
-reserved = {'config-root', 'domain','project','global-system-config','namespace'}
+reserved = {'config-root', 'domain', 'project', 'global-system-config', 'namespace'}
+
 
 class IFMapGenerator(object):
     """ IFMap generator
@@ -19,7 +20,8 @@ class IFMapGenerator(object):
         Step 3. Generate C++ decoder
         Step 4. Generate xsd corresponding to data structures.
     """
-    def __init__(self, parser, genCategory, fixup_prop = False):
+
+    def __init__(self, parser, genCategory, fixup_prop=False, module_name=""):
         self._Parser = parser
         self._idl_parser = None
         self._Identifiers = {}
@@ -29,11 +31,12 @@ class IFMapGenerator(object):
         self._cTypesDict = {}
         self._genCategory = genCategory
         self._fixupProp = fixup_prop
+        self._module_name = module_name
 
     def _BuildDataModel(self, children):
         for child in children:
             if not child.complexType:
-                #print 'element: ' + child.getCleanName()
+                # print 'element: ' + child.getCleanName()
                 self._ProcessElement(child)
 
         # Handle 'all' and any other deferred metadata
@@ -44,8 +47,9 @@ class IFMapGenerator(object):
                 meta.SetSchemaElement(element)
                 meta.setParent('all')
                 for identifier in self._Identifiers.values():
-                    identifier.SetProperty(meta)
-            
+                    if not self.__is_yang_rpc_type(identifier.getElement().getSchemaType()):
+                        identifier.SetProperty(meta)
+
         for idn in self._Identifiers.values():
             idn.Resolve(self._Parser.ElementDict, self._cTypesDict)
 
@@ -64,16 +68,21 @@ class IFMapGenerator(object):
         for prop in props:
             prop_name = prop.getName()
             if name + '-' in prop_name:
-                prop._name = (prop_name.partition(name+'-')[-1])
+                prop._name = (prop_name.partition(name + '-')[-1])
+
+
     def _ProcessElement(self, element):
         """ Process an element from the schema. This can be either an
-            identifier or meta-data element.
+            ididentifier or meta-data element.
         """
-        if element.getSchemaType() == 'IdentityType':
+        if element.getSchemaType() == 'IdentityType' or self.__is_yang_rpc_type(element.getSchemaType()):
             self._ProcessIdentifier(element)
         else:
             annotation = self._idl_parser.Find(element.getName())
             self._ProcessMetadata(element, annotation)
+
+    def __is_yang_rpc_type(self, elem_type):
+        return elem_type in {'RPC', 'RpcInputType', 'RpcOutputType'}
 
     def _ProcessIdentifier(self, element):
         identifier = self._IdentifierLocate(element.getName())
@@ -81,8 +90,8 @@ class IFMapGenerator(object):
 
     def _ProcessMetadata(self, element, annotation):
         if not annotation:
-           print "WARNING: no annotation for element " + str(element)
-           return
+            print "WARNING: no annotation for element " + str(element)
+            return
 
         if self._idl_parser.IsProperty(annotation) and annotation == 'all':
             self._DeferredElements.append((element, annotation))
@@ -95,7 +104,7 @@ class IFMapGenerator(object):
             identifier.SetProperty(meta)
         else:
             (from_name, to_name, attrs) = \
-                        self._idl_parser.GetLinkInfo(element.getName())
+                self._idl_parser.GetLinkInfo(element.getName())
             from_ident = self._IdentifierLocate(from_name)
             to_ident = self._IdentifierLocate(to_name)
             from_ident.addLinkInfo(meta, to_ident, attrs)
@@ -147,8 +156,7 @@ class IFMapGenerator(object):
         filename = self._Parser.outFilename + '_agent.cc'
         clntfile = self._Parser.makeFile(filename)
         classgen.GenerateAgent(clntfile, hfilename,
-                                self._Identifiers, self._Metadata)
-
+                               self._Identifiers, self._Metadata)
 
     def _GenerateBackendParsers(self):
         hfilename = self._Parser.outFilename + '_types.h'
@@ -162,10 +170,10 @@ class IFMapGenerator(object):
         sfilename = self._Parser.outFilename + '_agent.cc'
         sfile = open(sfilename, 'a')
         parsergen.GenerateAgent(sfile, self._Identifiers, self._Metadata)
-        
+
     def _GenerateFrontendClassDefinitions(self, xsd_root):
         apigen = IFMapApiGenerator(self._Parser, xsd_root,
-                                   self._Identifiers, self._Metadata)
+                                   self._Identifiers, self._Metadata, self._module_name)
         apigen.Generate(self._Parser.outFilename)
 
     def _GenerateJavaApi(self, xsd_root):
@@ -177,7 +185,6 @@ class IFMapGenerator(object):
         apigen = GoLangApiGenerator(self._Parser, self._cTypesDict,
                                     self._Identifiers, self._Metadata)
         apigen.Generate(self._Parser.outFilename)
-
 
     def setLanguage(self, lang):
         pass

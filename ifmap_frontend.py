@@ -19,13 +19,14 @@ def write(gen_file, gen_str):
 #end write
 
 class IFMapApiGenerator(object):
-    def __init__(self, xsd_parser, xsd_root, ident_dict, metadata_dict):
+    def __init__(self, xsd_parser, xsd_root, ident_dict, metadata_dict, module_name=""):
         self._xsd_parser = xsd_parser
         self._xsd_root = xsd_root
         self._ident_dict = ident_dict
         self._metadata_dict = metadata_dict
         # [<tenant>,...]")
         self._FQ_NAME_TENANT_IDX = 0
+        self._module_name = module_name
     #end __init__
 
     def Generate(self, gen_filepath_pfx):
@@ -58,12 +59,14 @@ class IFMapApiGenerator(object):
         #self._generate_docs_impl(gendir + "vnc_api_doc_gen.rst", gen_filename_pfx)
     #end Generate
 
-    def _non_exclude_idents(self):
+    def _non_exclude_idents(self, exclude_types = {'RPC','RpcInputType', 'RpcOutputType'}):
         _ret_idents = []
         for ident in self._ident_dict.values():
             ident_name = ident.getName()
             # TODO put Exclude on identifiers too...
             if re.match("bgp:", ident_name):
+                continue
+            if ident.getElement().getSchemaType() in exclude_types:
                 continue
             _ret_idents.append(ident)
 
@@ -95,12 +98,13 @@ class IFMapApiGenerator(object):
         write(gen_file, '"""')
         write(gen_file, "")
 
-        for ident in self._non_exclude_idents():
+        for ident in self._non_exclude_idents(exclude_types={'RPC'}):
             class_name = CamelCase(ident.getName())
             ident_name = ident.getName()
             method_name = ident_name.replace('-', '_')
             my_name_default = 'default-%s' %(ident.getName())
             parents = ident.getParents()
+            elem_type = ident.getElement().getSchemaType()
 
             write(gen_file, "class %s(object):" %(class_name))
             write(gen_file, '    """')
@@ -181,10 +185,11 @@ class IFMapApiGenerator(object):
             write(gen_file, "    def __init__(%s, *args, **kwargs):" %(init_args))
             write(gen_file, "        # type-independent fields")
             write(gen_file, "        self._type = '%s'" %(ident_name))
-            write(gen_file, "        if not name:")
-            write(gen_file, "            name = u'%s'" %(my_name_default))
-            write(gen_file, "        self.name = name")
-            write(gen_file, "        self._uuid = None")
+            if not self.__is_yang_rpc_type(elem_type):
+                write(gen_file, "        if not name:")
+                write(gen_file, "            name = u'%s'" %(my_name_default))
+                write(gen_file, "        self.name = name")
+                write(gen_file, "        self._uuid = None")
             if parents:
                 write(gen_file, "        # Determine parent type and fq_name")
                 write(gen_file, "        kwargs_parent_type = kwargs.get('parent_type', None)")
@@ -221,7 +226,8 @@ class IFMapApiGenerator(object):
                     #end parent is config-root check
                 #end num possible parents check
             else: # no parent in schema
-                write(gen_file, "        self.fq_name = [name]")
+                if not self.__is_yang_rpc_type(elem_type):
+                    write(gen_file, "        self.fq_name = [name]")
             #end parents exist in schema check
 
             write(gen_file, "")
@@ -241,16 +247,18 @@ class IFMapApiGenerator(object):
             write(gen_file, "        return self._type")
             write(gen_file, "    #end get_type")
             write(gen_file, "")
-            write(gen_file, "    def get_fq_name(self):")
-            write(gen_file, '        """Return FQN of %s in list form."""' %(ident_name))
-            write(gen_file, "        return self.fq_name")
-            write(gen_file, "    #end get_fq_name")
-            write(gen_file, "")
-            write(gen_file, "    def get_fq_name_str(self):")
-            write(gen_file, '        """Return FQN of %s as colon delimited string."""' %(ident_name))
-            write(gen_file, "        return ':'.join(self.fq_name)")
-            write(gen_file, "    #end get_fq_name_str")
-            write(gen_file, "")
+
+            if not self.__is_yang_rpc_type(elem_type):
+                write(gen_file, "    def get_fq_name(self):")
+                write(gen_file, '        """Return FQN of %s in list form."""' %(ident_name))
+                write(gen_file, "        return self.fq_name")
+                write(gen_file, "    #end get_fq_name")
+                write(gen_file, "")
+                write(gen_file, "    def get_fq_name_str(self):")
+                write(gen_file, '        """Return FQN of %s as colon delimited string."""' %(ident_name))
+                write(gen_file, "        return ':'.join(self.fq_name)")
+                write(gen_file, "    #end get_fq_name_str")
+                write(gen_file, "")
             if parents:
                 write(gen_file, "    @property")
                 write(gen_file, "    def parent_name(self):")
@@ -276,25 +284,26 @@ class IFMapApiGenerator(object):
                 write(gen_file, "    #end get_parent_fq_name_str")
                 write(gen_file, "")
 
-            # Getters and Setters for common fields
-            write(gen_file, "    @property")
-            write(gen_file, "    def uuid(self):")
-            write(gen_file, "        return getattr(self, '_uuid', None)")
-            write(gen_file, "    #end uuid")
-            write(gen_file, "")
-            write(gen_file, "    @uuid.setter")
-            write(gen_file, "    def uuid(self, uuid_val):")
-            write(gen_file, "        self._uuid = uuid_val")
-            write(gen_file, "    #end uuid")
-            write(gen_file, "")
-            write(gen_file, "    def set_uuid(self, uuid_val):")
-            write(gen_file, "        self.uuid = uuid_val")
-            write(gen_file, "    #end set_uuid")
-            write(gen_file, "")
-            write(gen_file, "    def get_uuid(self):")
-            write(gen_file, "        return self.uuid")
-            write(gen_file, "    #end get_uuid")
-            write(gen_file, "")
+            if not self.__is_yang_rpc_type(elem_type):
+                # Getters and Setters for common fields
+                write(gen_file, "    @property")
+                write(gen_file, "    def uuid(self):")
+                write(gen_file, "        return getattr(self, '_uuid', None)")
+                write(gen_file, "    #end uuid")
+                write(gen_file, "")
+                write(gen_file, "    @uuid.setter")
+                write(gen_file, "    def uuid(self, uuid_val):")
+                write(gen_file, "        self._uuid = uuid_val")
+                write(gen_file, "    #end uuid")
+                write(gen_file, "")
+                write(gen_file, "    def set_uuid(self, uuid_val):")
+                write(gen_file, "        self.uuid = uuid_val")
+                write(gen_file, "    #end set_uuid")
+                write(gen_file, "")
+                write(gen_file, "    def get_uuid(self):")
+                write(gen_file, "        return self.uuid")
+                write(gen_file, "    #end get_uuid")
+                write(gen_file, "")
 
             # Getters and Setters for properties
             for prop in ident.getProperties():
@@ -339,12 +348,13 @@ class IFMapApiGenerator(object):
             write(gen_file, "    def serialize_to_json(self, field_names = None):")
             write(gen_file, "        serialized = {}")
             write(gen_file, "")
-            write(gen_file, "        # serialize common fields")
-            write(gen_file, "        self._serialize_field_to_json(serialized, ['uuid'], 'uuid')")
-            write(gen_file, "        self._serialize_field_to_json(serialized, field_names, 'fq_name')")
-            write(gen_file, "        if hasattr(self, 'parent_type'):")
-            write(gen_file, "            self._serialize_field_to_json(serialized, field_names, 'parent_type')")
-            write(gen_file, "")
+            if not self.__is_yang_rpc_type(elem_type):
+                write(gen_file, "        # serialize common fields")
+                write(gen_file, "        self._serialize_field_to_json(serialized, ['uuid'], 'uuid')")
+                write(gen_file, "        self._serialize_field_to_json(serialized, field_names, 'fq_name')")
+                write(gen_file, "        if hasattr(self, 'parent_type'):")
+                write(gen_file, "            self._serialize_field_to_json(serialized, field_names, 'parent_type')")
+                write(gen_file, "")
 
             write(gen_file, "        # serialize property fields")
             for prop in ident.getProperties():
@@ -500,8 +510,9 @@ class IFMapApiGenerator(object):
             write(gen_file, "    def dump(self):")
             write(gen_file, '        """Display %s object in compact form."""' %(ident_name))
             write(gen_file, "        print '------------ %s ------------'" % (ident_name))
-            write(gen_file, "        print 'Name = ', self.get_fq_name()")
-            write(gen_file, "        print 'Uuid = ', self.uuid")
+            if not self.__is_yang_rpc_type(elem_type):
+                write(gen_file, "        print 'Name = ', self.get_fq_name()")
+                write(gen_file, "        print 'Uuid = ', self.uuid")
             if parents:
                 write(gen_file, "        if hasattr(self, 'parent_type'): # non config-root children")
                 write(gen_file, "            print 'Parent Type = ', self.parent_type")
@@ -536,17 +547,22 @@ class IFMapApiGenerator(object):
         write(gen_file, "# AUTO-GENERATED file from %s. Do Not Edit!" \
               %(self.__class__.__name__))
         write(gen_file, "")
-        write(gen_file, "import vnc_api.gen.%s_common" %(gen_filename_pfx))
-        write(gen_file, "import vnc_api.gen.%s_xsd" %(gen_filename_pfx))
+        module_prefix = ''
+        if self._module_name is not "":
+            module_prefix = "%s." % self._module_name
+
+        write(gen_file, "import %svnc_api.gen.%s_common" %(module_prefix, gen_filename_pfx))
+        write(gen_file, "import %svnc_api.gen.%s_xsd" %(module_prefix, gen_filename_pfx))
         write(gen_file, "")
 
         write(gen_file, "")
-        for ident in self._non_exclude_idents():
+        for ident in self._non_exclude_idents(exclude_types={'RPC'}):
             parents = ident.getParents()
             class_name = CamelCase(ident.getName())
             method_name = ident.getName().replace('-', '_')
-            write(gen_file, "class %s(vnc_api.gen.%s_common.%s):" \
-                                   %(class_name, gen_filename_pfx, class_name))
+            elem_type = ident.getElement().getSchemaType()
+            write(gen_file, "class %s(%svnc_api.gen.%s_common.%s):" \
+                                   %(class_name,module_prefix, gen_filename_pfx, class_name))
             write(gen_file, "    create_uri = ''")
             write(gen_file, "    resource_uri_base = {}")
 
@@ -566,7 +582,11 @@ class IFMapApiGenerator(object):
             if parents:
                 write(gen_file, "        pending_fields = ['fq_name', 'parent_type']")
             else:
-                write(gen_file, "        pending_fields = ['fq_name']")
+                if not self.__is_yang_rpc_type(elem_type):
+                    write(gen_file, "        pending_fields = ['fq_name']")
+                else:
+                    write(gen_file, "        pending_fields = []")
+
             write(gen_file, "")
             write(gen_file, "        self._server_conn = None")
             write(gen_file, "")
@@ -608,21 +628,24 @@ class IFMapApiGenerator(object):
                 xsd_type = prop.getXsdType()
                 write(gen_file, "        if '%s' in kwargs:" %(prop_name))
                 if complex_type and xsd_type:
-                    write(gen_file, "            props_dict['%s'] = vnc_api.gen.%s_xsd.%s(**kwargs['%s'])" \
-                                                             %(prop_name, gen_filename_pfx, xsd_type, prop_name))
+                    write(gen_file, "            props_dict['%s'] = %svnc_api.gen.%s_xsd.%s(**kwargs['%s'])" \
+                                                             %(prop_name, module_prefix, gen_filename_pfx, xsd_type, prop_name))
                 else:
                     write(gen_file, "            props_dict['%s'] = kwargs['%s']" %(prop_name, prop_name))
 
             write(gen_file, "")
-            write(gen_file, "        # obj constructor takes only props")
-            write(gen_file, "        parent_type = kwargs.get('parent_type', None)")
-            write(gen_file, "        fq_name = kwargs['fq_name']")
-            write(gen_file, "        props_dict.update({'parent_type': parent_type, 'fq_name': fq_name})")
-            write(gen_file, "        obj = %s(fq_name[-1], **props_dict)" %(class_name))
-            write(gen_file, "        obj.uuid = kwargs['uuid']")
-            write(gen_file, "        if 'parent_uuid' in kwargs:")
-            write(gen_file, "            obj.parent_uuid = kwargs['parent_uuid']")
-            write(gen_file, "")
+            if not self.__is_yang_rpc_type(elem_type):
+                write(gen_file, "        # obj constructor takes only props")
+                write(gen_file, "        parent_type = kwargs.get('parent_type', None)")
+                write(gen_file, "        fq_name = kwargs['fq_name']")
+                write(gen_file, "        props_dict.update({'parent_type': parent_type, 'fq_name': fq_name})")
+                write(gen_file, "        obj = %s(fq_name[-1], **props_dict)" %(class_name))
+                write(gen_file, "        obj.uuid = kwargs['uuid']")
+                write(gen_file, "        if 'parent_uuid' in kwargs:")
+                write(gen_file, "            obj.parent_uuid = kwargs['parent_uuid']")
+                write(gen_file, "")
+            else:
+                write(gen_file, "        obj = %s(**props_dict)" %(class_name))
             write(gen_file, "        # add summary of any children...")
             children_idents = ident.getChildren()
             if children_idents:
@@ -651,7 +674,7 @@ class IFMapApiGenerator(object):
                 write(gen_file, "            obj.%s_refs = kwargs['%s_refs']" %(to_name, to_name))
                 if link_type: # link with attributes
                     write(gen_file, "            for ref in obj.%s_refs:" %(to_name))
-                    write(gen_file, "                ref['attr'] = vnc_api.gen.%s_xsd.%s(**ref['attr'])" %(gen_filename_pfx, link_type))
+                    write(gen_file, "                ref['attr'] = %svnc_api.gen.%s_xsd.%s(**ref['attr'])" %(module_prefix,gen_filename_pfx, link_type))
                 #    write(gen_file, "                obj.add_%s(ref_obj)" %(to_name))
 
             write(gen_file, "")
@@ -679,23 +702,24 @@ class IFMapApiGenerator(object):
             write(gen_file, "")
 
             # Setters for common fields
-            write(gen_file, "    @vnc_api.gen.%s_common.%s.uuid.setter" %(gen_filename_pfx, class_name))
-            write(gen_file, "    def uuid(self, uuid_val):")
-            write(gen_file, "        self._uuid = uuid_val")
-            write(gen_file, "        if 'uuid' not in self._pending_field_updates:")
-            write(gen_file, "            self._pending_field_updates.add('uuid')")
-            write(gen_file, "    #end uuid")
-            write(gen_file, "")
-            write(gen_file, "    def set_uuid(self, uuid_val):")
-            write(gen_file, "        self.uuid = uuid_val")
-            write(gen_file, "    #end set_uuid")
-            write(gen_file, "")
+            if not self.__is_yang_rpc_type(elem_type):
+                write(gen_file, "    @%svnc_api.gen.%s_common.%s.uuid.setter" %(module_prefix,gen_filename_pfx, class_name))
+                write(gen_file, "    def uuid(self, uuid_val):")
+                write(gen_file, "        self._uuid = uuid_val")
+                write(gen_file, "        if 'uuid' not in self._pending_field_updates:")
+                write(gen_file, "            self._pending_field_updates.add('uuid')")
+                write(gen_file, "    #end uuid")
+                write(gen_file, "")
+                write(gen_file, "    def set_uuid(self, uuid_val):")
+                write(gen_file, "        self.uuid = uuid_val")
+                write(gen_file, "    #end set_uuid")
+                write(gen_file, "")
 
             # Setters for properties
             for prop in ident.getProperties():
                 prop_name = prop.getName().replace('-', '_')
                 prop_type = prop.getXsdType()
-                write(gen_file, "    @vnc_api.gen.%s_common.%s.%s.setter" %(gen_filename_pfx, class_name, prop_name))
+                write(gen_file, "    @%svnc_api.gen.%s_common.%s.%s.setter" %(module_prefix,gen_filename_pfx, class_name, prop_name))
                 write(gen_file, "    def %s(self, %s):" %(prop_name, prop_name))
                 write(gen_file, '        """Set %s for %s.' %(prop.getName(), ident.getName()))
                 write(gen_file, '        ')
@@ -825,59 +849,69 @@ class IFMapApiGenerator(object):
         write(gen_file, "from %s_common import *" %(gen_filename_pfx))
         write(gen_file, "")
 
-        for ident in self._non_exclude_idents():
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType','RpcOutputType'}):
             ident_name = ident.getName()
             method_name = ident_name.replace('-', '_')
             camel_name = CamelCase(ident_name)
-            write(gen_file, "class %sServerGen(%s):" %(camel_name, camel_name))
+            if not self.__is_yang_rpc_type(ident.getElement().getSchemaType()):
+                write(gen_file, "class %sServerGen(%s):" %(camel_name, camel_name))
+            else:
+                write(gen_file, "class %sServerGen(object):" %(camel_name))
             write(gen_file, "    generate_default_instance = True")
             write(gen_file, "")
             write(gen_file, "    def __init__(self):")
             write(gen_file, "        pass")
             write(gen_file, "    #end __init__")
             write(gen_file, "")
-            # HTTP methods
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def http_get(cls, id):")
-            write(gen_file, "        return True, ''")
-            write(gen_file, "    #end http_get")
-            write(gen_file, "")
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def http_put(cls, id, fq_name, obj, db_conn):")
-            write(gen_file, "        return True, ''")
-            write(gen_file, "    #end http_put")
-            write(gen_file, "")
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def http_post(cls, tenant_name, obj):")
-            write(gen_file, "        return True, ''")
-            write(gen_file, "    #end http_post")
-            write(gen_file, "")
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def http_delete(cls, id, obj, db_conn):")
-            write(gen_file, "        return True, ''")
-            write(gen_file, "    #end http_delete")
-            write(gen_file, "")
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def http_post_collection(cls, tenant_name, obj, db_conn):")
-            write(gen_file, "        return True, ''")
-            write(gen_file, "    #end http_post")
-            write(gen_file, "")
-            # Notification methods
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def dbe_create_notification(cls, obj_ids, obj_dict):")
-            write(gen_file, "        pass")
-            write(gen_file, "    #end dbe_create_notification")
-            write(gen_file, "")
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def dbe_update_notification(cls, obj_ids):")
-            write(gen_file, "        pass")
-            write(gen_file, "    #end dbe_update_notification")
-            write(gen_file, "")
-            write(gen_file, "    @classmethod")
-            write(gen_file, "    def dbe_delete_notification(cls, obj_ids, obj_dict):")
-            write(gen_file, "        pass")
-            write(gen_file, "    #end dbe_delete_notification")
-            write(gen_file, "")
+            if self.__is_yang_rpc_type(ident.getElement().getSchemaType()):
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def http_post(cls, tenant_name, obj):")
+                write(gen_file, "        return True, ''")
+                write(gen_file, "    #end http_post")
+                write(gen_file, "")
+            else:
+                # HTTP methods
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def http_get(cls, id):")
+                write(gen_file, "        return True, ''")
+                write(gen_file, "    #end http_get")
+                write(gen_file, "")
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def http_put(cls, id, fq_name, obj, db_conn):")
+                write(gen_file, "        return True, ''")
+                write(gen_file, "    #end http_put")
+                write(gen_file, "")
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def http_post(cls, tenant_name, obj):")
+                write(gen_file, "        return True, ''")
+                write(gen_file, "    #end http_post")
+                write(gen_file, "")
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def http_delete(cls, id, obj, db_conn):")
+                write(gen_file, "        return True, ''")
+                write(gen_file, "    #end http_delete")
+                write(gen_file, "")
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def http_post_collection(cls, tenant_name, obj, db_conn):")
+                write(gen_file, "        return True, ''")
+                write(gen_file, "    #end http_post")
+                write(gen_file, "")
+                # Notification methods
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def dbe_create_notification(cls, obj_ids, obj_dict):")
+                write(gen_file, "        pass")
+                write(gen_file, "    #end dbe_create_notification")
+                write(gen_file, "")
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def dbe_update_notification(cls, obj_ids):")
+                write(gen_file, "        pass")
+                write(gen_file, "    #end dbe_update_notification")
+                write(gen_file, "")
+                write(gen_file, "    @classmethod")
+                write(gen_file, "    def dbe_delete_notification(cls, obj_ids, obj_dict):")
+                write(gen_file, "        pass")
+                write(gen_file, "    #end dbe_delete_notification")
+                write(gen_file, "")
             write(gen_file, "#end class %sServerGen" %(camel_name))
             write(gen_file, "")
     #end _generate_server_classes
@@ -1200,11 +1234,22 @@ class IFMapApiGenerator(object):
         write(gen_file, "        pass")
         write(gen_file, "    #end __init__")
 
-        for ident in self._non_exclude_idents():
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'}):
             ident_name = ident.getName()
             method_name = ident_name.replace('-', '_')
             camel_name = CamelCase(ident_name)
             parents = ident.getParents()
+            if self.__is_yang_rpc_type(ident.getElement().getSchemaType()):
+                write(gen_file, "    def %s_execute(self, obj):" %(method_name))
+                write(gen_file, '        """Execute RPC %s.' % (ident_name))
+                write(gen_file, '        ')
+                write(gen_file, '        :param obj: :class:`.%sinput` object' % (camel_name))
+                write(gen_file, '        ')
+                write(gen_file, '        """')
+                write(gen_file, "        raise NotImplementedError, '%s_execute is %%s\\'s responsibility' %% (str(type (self)))" % method_name)
+                write(gen_file, "    #end %s_create" %(method_name))
+                write(gen_file, "")
+                continue
 
             write(gen_file, "    def %s_create(self, obj):" %(method_name))
             write(gen_file, '        """Create new %s.' % (ident_name))
@@ -1290,13 +1335,16 @@ class IFMapApiGenerator(object):
     def _generate_client_impl(self, gen_fname, gen_type_pfx):
         gen_file = self._xsd_parser.makeFile(gen_fname)
         write(gen_file, "")
+        module_prefix = ""
+        if self._module_name is not "":
+            module_prefix = '%s.' % self._module_name
         write(gen_file, "# AUTO-GENERATED file from %s. Do Not Edit!" \
               %(self.__class__.__name__))
         write(gen_file, "")
         write(gen_file, "import json")
-        write(gen_file, "import vnc_api.gen.%s_xsd" %(gen_type_pfx))
-        write(gen_file, "import vnc_api.gen.%s_client" %(gen_type_pfx))
-        write(gen_file, "from vnc_api.gen.connection_drv_gen import ConnectionDriverBase")
+        write(gen_file, "import %svnc_api.gen.%s_xsd" %(module_prefix, gen_type_pfx))
+        write(gen_file, "import %svnc_api.gen.%s_client" %(module_prefix, gen_type_pfx))
+        write(gen_file, "from %svnc_api.gen.connection_drv_gen import ConnectionDriverBase" % ( module_prefix ))
         write(gen_file, "from cfgm_common import rest")
         write(gen_file, "from cfgm_common.exceptions import *")
         write(gen_file, "")
@@ -1321,13 +1369,16 @@ class IFMapApiGenerator(object):
             ident_name = ident.getName()
             method_name = ident_name.replace('-', '_')
             camel_name = CamelCase(ident_name)
-            write(gen_file, "        self._type_to_class['%s'] = vnc_api.gen.%s_client.%s" \
-                                                          %(method_name, gen_type_pfx, camel_name))
+            write(gen_file, "        self._type_to_class['%s'] = %svnc_api.gen.%s_client.%s" \
+                                                          %(method_name, module_prefix,gen_type_pfx, camel_name))
 
 
         write(gen_file, "    #end __init__")
-
-        for ident in self._non_exclude_idents():
+        deferred_rpc = []
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'}):
+            if self.__is_yang_rpc_type(ident.getElement().getSchemaType()):
+                deferred_rpc.append(ident)
+                continue
             ident_name = ident.getName()
             method_name = ident_name.replace('-', '_')
             camel_name = CamelCase(ident_name)
@@ -1349,7 +1400,7 @@ class IFMapApiGenerator(object):
             write(gen_file, "        json_body = '{\"" + ident_name + "\":' + json_param + '}'")
 
             write(gen_file, "        content = self._request_server(rest.OP_POST,")
-            write(gen_file, "                       vnc_api.gen.%s_client.%s.create_uri," %(gen_type_pfx, camel_name))
+            write(gen_file, "                       %svnc_api.gen.%s_client.%s.create_uri," %(module_prefix,gen_type_pfx, camel_name))
             write(gen_file, "                       data = json_body)")
             write(gen_file, "")
             write(gen_file, "        %s_dict = json.loads(content)['%s']" %(method_name, ident_name))
@@ -1379,8 +1430,8 @@ class IFMapApiGenerator(object):
             write(gen_file, "            return result")
             write(gen_file, "")
             write(gen_file, "        id = result")
-            write(gen_file, "        uri = vnc_api.gen.%s_client.%s.resource_uri_base['%s'] + '/' + id" \
-                                                       %(gen_type_pfx, camel_name, ident_name))
+            write(gen_file, "        uri = %svnc_api.gen.%s_client.%s.resource_uri_base['%s'] + '/' + id" \
+                                                       %(module_prefix, gen_type_pfx, camel_name, ident_name))
             write(gen_file, "")
             write(gen_file, "        if fields:")
             write(gen_file, "            comma_sep_fields = ','.join(f for f in fields)")
@@ -1391,7 +1442,7 @@ class IFMapApiGenerator(object):
             write(gen_file, "        content = self._request_server(rest.OP_GET, uri, query_params)")
             write(gen_file, "")
             write(gen_file, "        obj_dict = json.loads(content)['%s']" %(ident_name))
-            write(gen_file, "        %s_obj = vnc_api.gen.%s_client.%s.from_dict(**obj_dict)" %(method_name, gen_type_pfx, camel_name))
+            write(gen_file, "        %s_obj = %svnc_api.gen.%s_client.%s.from_dict(**obj_dict)" %( method_name, module_prefix, gen_type_pfx, camel_name))
             write(gen_file, "        %s_obj.clear_pending_updates()" %(method_name))
             write(gen_file, "        %s_obj.set_server_conn(self)" %(method_name))
             write(gen_file, "")
@@ -1414,8 +1465,8 @@ class IFMapApiGenerator(object):
             write(gen_file, "        json_body = '{\"" + ident_name + "\":' + json_param + '}'")
             write(gen_file, "")
             write(gen_file, "        id = obj.uuid")
-            write(gen_file, "        uri = vnc_api.gen.%s_client.%s.resource_uri_base['%s'] + '/' + id" \
-                                                       %(gen_type_pfx, camel_name, ident_name))
+            write(gen_file, "        uri = %svnc_api.gen.%s_client.%s.resource_uri_base['%s'] + '/' + id" \
+                                                       %(module_prefix, gen_type_pfx, camel_name, ident_name))
             write(gen_file, "        content = self._request_server(rest.OP_PUT, uri, data = json_body)")
             write(gen_file, "        for ref_name in obj._pending_ref_updates:")
             write(gen_file, "             ref_orig = set([(x.get('uuid'), tuple(x.get('to', [])), x.get('attr')) for x in getattr(obj, '_original_' + ref_name, [])])")
@@ -1472,19 +1523,48 @@ class IFMapApiGenerator(object):
             write(gen_file, "            return result")
             write(gen_file, "")
             write(gen_file, "        id = result")
-            write(gen_file, "        uri = vnc_api.gen.%s_client.%s.resource_uri_base['%s'] + '/' + id" \
-                                                       %(gen_type_pfx, camel_name, ident_name))
+            write(gen_file, "        uri = %svnc_api.gen.%s_client.%s.resource_uri_base['%s'] + '/' + id" \
+                                                       %(module_prefix, gen_type_pfx, camel_name, ident_name))
             write(gen_file, "")
             write(gen_file, "        content = self._request_server(rest.OP_DELETE, uri)")
             write(gen_file, "    #end %s_delete" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def get_default_%s_id(self):" %(method_name))
             write(gen_file, '        """Return UUID of default %s."""' %(ident_name))
-            write(gen_file, "        return self.fq_name_to_id('%s', vnc_api.gen.%s_client.%s().get_fq_name())" \
-                                                                %(ident_name, gen_type_pfx, camel_name))
+            write(gen_file, "        return self.fq_name_to_id('%s', %svnc_api.gen.%s_client.%s().get_fq_name())" \
+                                                                %(ident_name, module_prefix, gen_type_pfx, camel_name))
             write(gen_file, "    #end get_default_%s_delete" %(method_name))
             write(gen_file, "")
+        if deferred_rpc:
+            for ident in deferred_rpc:
+                ident_name = ident.getName()
+                method_name = ident_name.replace('-', '_')
+                camel_name = CamelCase(ident_name) +'Input'
+                out_camel_name = CamelCase(ident_name) + 'Output'
+                write(gen_file, "    def %s_execute(self, obj):" %(method_name))
+                write(gen_file, '        """Execute RPC %s.' % (ident_name))
+                write(gen_file, '        ')
+                write(gen_file, '        :param obj: :class:`.%s` object' % (camel_name))
+                write(gen_file, '        :return  :class:`.%s` object' % (out_camel_name))
+                write(gen_file, '        ')
+                write(gen_file, '        """')
+                write(gen_file, "        obj._pending_field_updates |= obj._pending_ref_updates")
+                write(gen_file, "        obj._pending_ref_updates = set([])")
+                write(gen_file, "        # Ignore fields with None value in json representation")
+                write(gen_file, "        json_param = json.dumps(obj, default = self._obj_serializer)")
+                write(gen_file, "        json_body = json_param ")
 
+                write(gen_file, "        content = self._request_server(rest.OP_POST,")
+                write(gen_file, "                       %svnc_api.gen.%s_client.%s.create_uri," %(module_prefix,gen_type_pfx, camel_name))
+                write(gen_file, "                       data = json_body)")
+                write(gen_file, "")
+                write(gen_file, "        %s_dict = json.loads(content)" %(method_name))
+                write(gen_file, "        out = %svnc_api.gen.resource_client.%s.from_dict(**%s_dict)" %(module_prefix, out_camel_name, method_name))
+                write(gen_file, "        out.set_server_conn(self)")
+                write(gen_file, "")
+                write(gen_file, "        return out")
+                write(gen_file, "    #end %s_create" %(method_name))
+                write(gen_file, "")
         write(gen_file, "#end class %s" %(class_name))
 
         # following for schema-converter
@@ -1507,11 +1587,11 @@ class IFMapApiGenerator(object):
             write(gen_file, "        prop_dict = obj_dict.get('%s')"%(prop_field))
             write(gen_file, "        if prop_dict:")
             write(gen_file, "            buf = cStringIO.StringIO()")
-            write(gen_file, "            xx_%s = %s(**prop_dict)" %(prop_field, prop_type))
-            write(gen_file, "            xx_%s.export(buf)" %(prop_field))
-            write(gen_file, "            node = etree.fromstring(buf.getvalue())")
-            write(gen_file, "            xx_%s = %s()" %(prop_field, prop_type))
             write(gen_file, "            try:")
+            write(gen_file, "                xx_%s = %s(**prop_dict)" %(prop_field, prop_type))
+            write(gen_file, "                xx_%s.export(buf)" %(prop_field))
+            write(gen_file, "                node = etree.fromstring(buf.getvalue())")
+            write(gen_file, "                xx_%s = %s()" %(prop_field, prop_type))
             write(gen_file, "                xx_%s.build(node)" %(prop_field))
             write(gen_file, "            except Exception as e:")
             write(gen_file, "                abort(400, str(e))")
@@ -1562,7 +1642,7 @@ class IFMapApiGenerator(object):
         write(gen_file, "from lxml import etree")
         write(gen_file, "")
         write(gen_file, "all_resource_types = set([")
-        for ident in self._non_exclude_idents():
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'}):
             ident_name = ident.getName()
             write(gen_file, "    '%s'," %(ident_name))
         write(gen_file, "    ])")
@@ -1570,17 +1650,25 @@ class IFMapApiGenerator(object):
         # Grab idents for which collection link has to be advertised
         collection_idents = [ident for ident in self._non_exclude_idents()
                                        if ident.getName() != _BASE_PARENT]
+        rpc_as_collection_idents = [ident for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'})
+                                    if self.__is_yang_rpc_type(ident.getElement().getSchemaType())]
         class_name = CamelCase(os.path.basename(gen_fname.split('.py')[0]))
         # TODO derive from thrift service name
         write(gen_file, "class %s(object):" %(class_name))
         write(gen_file, "    def __new__(cls, *args, **kwargs):")
         write(gen_file, "        obj = super(%s, cls).__new__(cls, *args, **kwargs)" \
                                              %(class_name))
-        for ident in self._non_exclude_idents():
+        deferred_rpc = []
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'}):
             ident_name = ident.getName()
+            method_name = ident_name.replace('-', '_')
             if ident_name == _BASE_PARENT:
                 continue
-            method_name = ident_name.replace('-', '_')
+            if self.__is_yang_rpc_type(ident.getElement().getSchemaType()):
+                deferred_rpc.append(ident)
+                continue
+
+
             write(gen_file, "        # leaf resource")
             write(gen_file, "        obj.route('%s/%s/<id>', 'GET', obj.%s_http_get)" \
                                                    %(_BASE_URL, ident_name, method_name))
@@ -1593,6 +1681,15 @@ class IFMapApiGenerator(object):
                                                    %(_BASE_URL, ident_name, method_name))
             write(gen_file, "        obj.route('%s/%ss', 'GET', obj.%ss_http_get)" \
                                                    %(_BASE_URL, ident_name, method_name))
+
+        if deferred_rpc:
+            write(gen_file, "        # RPC ")
+            for ident in deferred_rpc:
+                ident_name = ident.getName()
+                method_name = ident_name.replace('-', '_')
+                write(gen_file, "        obj.route('%s/%s', 'POST', obj.%s_execute)" \
+                                                   %(_BASE_URL, ident_name,method_name))
+
         write(gen_file, "        return obj")
         write(gen_file, "    #end __new__")
         write(gen_file, "")
@@ -1602,7 +1699,7 @@ class IFMapApiGenerator(object):
         write(gen_file, "        self._post_common = None")
         write(gen_file, "")
         write(gen_file, "        self._resource_classes = {}")
-        for ident in self._non_exclude_idents():
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'}):
             ident_name = ident.getName()
             camel_name = CamelCase(ident_name)
             write(gen_file, "        self._resource_classes['%s'] = %sServerGen" %(ident_name, camel_name))
@@ -1620,6 +1717,17 @@ class IFMapApiGenerator(object):
             write(gen_file, "        link = LinkObject('collection',")
             write(gen_file, "                       self._base_url , '/%ss'," %(ident_name))
             write(gen_file, "                       '%s')" %(ident_name))
+            write(gen_file, "        links.append(link)")
+            write(gen_file, "")
+        if rpc_as_collection_idents:
+            write(gen_file, "        # Link for RPC")
+
+        for ident in rpc_as_collection_idents:
+            ident_name = ident.getName()
+            method_name = ident_name + "-input"
+            write(gen_file, "        link = LinkObject('collection',")
+            write(gen_file, "                       self._base_url , '/%s'," %(ident_name))
+            write(gen_file, "                       '%s')" %(method_name))
             write(gen_file, "        links.append(link)")
             write(gen_file, "")
 
@@ -1644,8 +1752,15 @@ class IFMapApiGenerator(object):
         write(gen_file, "                return 'admin' in [x.lower() for x in roles]")
         write(gen_file, "        return False")
         write(gen_file, "")
-
-        for ident in self._non_exclude_idents():
+        deferred_rpc = []
+        rpc_output_types = {}
+        for ident in self._non_exclude_idents(exclude_types={'RPC'}):
+            if ident.getElement().getSchemaType() == 'RpcInputType':
+                deferred_rpc.append(ident)
+                continue
+            if ident.getElement().getSchemaType() == 'RpcOutputType':
+                rpc_output_types[ident.getName()] = ident
+                continue
             ident_name = ident.getName()
             parents = ident.getParents()
             #(parent_ident, parent_link) = ident.getParent()
@@ -2259,6 +2374,70 @@ class IFMapApiGenerator(object):
             write(gen_file, "        pass")
             write(gen_file, "    #end _%s_delete_default_children" %(method_name))
             write(gen_file, "")
+        #Handle RPC
+        if deferred_rpc:
+            #Add serializer
+            write(gen_file, "    def _obj_serializer_all(self, obj):")
+            write(gen_file, "       if hasattr(obj, 'serialize_to_json'):")
+            write(gen_file, "           return obj.serialize_to_json()")
+            write(gen_file, "       else:")
+            write(gen_file, "           return dict((k, v) for k, v in obj.__dict__.iteritems())")
+            write(gen_file, "    #end _obj_serializer_all")
+            write(gen_file, "")
+            for ident in deferred_rpc:
+                    ident_name = ident.getName().rpartition("-input")[0]
+                    method_name = ident_name.replace('-', '_') + '_execute'
+                    # RPC execution
+                    write(gen_file, "    def %s(self):" %(method_name))
+                    write(gen_file, "        obj_dict = request.json")
+                    write(gen_file, "")
+                    self._add_validate(gen_file, ident)
+
+                    write(gen_file, "")
+
+                    write(gen_file, "        env = request.headers.environ")
+                    write(gen_file, "        tenant_name = env.get(hdr_server_tenant(), 'default-project')")
+                    write(gen_file, "")
+                    write(gen_file, "")
+                    write(gen_file, "        # State modification starts from here. Ensure that cleanup is done for all state changes")
+                    write(gen_file, "        cleanup_on_failure = []")
+                    write(gen_file, "        # type-specific hook")
+                    write(gen_file, "        r_class = self.get_resource_class('%s')" %(ident_name))
+                    write(gen_file, "        if r_class:")
+                    write(gen_file, "            (ok, result) = r_class.http_post(tenant_name, obj_dict)")
+                    write(gen_file, "            if not ok:")
+                    write(gen_file, "                for fail_cleanup_callable, cleanup_args in cleanup_on_failure:")
+                    write(gen_file, "                    fail_cleanup_callable(*cleanup_args)")
+                    write(gen_file, "                (code, msg) = result")
+                    write(gen_file, "                self.config_object_error(None, '%s', '%s', 'http_post', msg)" % (ident_name, method_name))
+                    write(gen_file, "                abort(code, msg)")
+                    write(gen_file, "        callable = getattr(r_class, 'http_post_collection_fail', None)")
+                    write(gen_file, "        if callable:")
+                    write(gen_file, "            cleanup_on_failure.append((callable, [tenant_name, obj_dict]))")
+                    write(gen_file, "")
+                    write(gen_file, "        #call RPC implementation")
+                    write(gen_file, "        ok = True")
+                    write(gen_file, "        try:")
+                    write(gen_file, "            resp_obj = self._extension_mgrs['rpcApi'].map_method('%s', obj_dict)" %(method_name))
+                    write(gen_file, "            rsp_body = json.dumps(resp_obj, default=self._obj_serializer_all)")
+                    write(gen_file, "        except KeyError as e:")
+                    write(gen_file, "            ok = False")
+                    write(gen_file, "            result = 'RPC not implemented'")
+                    write(gen_file, "            ")
+                    write(gen_file, "        except Exception as e:")
+                    write(gen_file, "            ok = False")
+                    write(gen_file, "            result = str(e)")
+                    write(gen_file, "            ")
+                    write(gen_file, "")
+                    write(gen_file, "        if not ok:")
+                    write(gen_file, "            for fail_cleanup_callable, cleanup_args in cleanup_on_failure:")
+                    write(gen_file, "                fail_cleanup_callable(*cleanup_args)")
+                    write(gen_file, "            self.config_object_error(None, '%s', '%s', 'http_post', result)" % (ident_name, method_name))
+                    write(gen_file, "            abort(404, result)")
+                    write(gen_file, "")
+                    write(gen_file, "        return rsp_body[1:len(rsp_body)-1] ")
+                    write(gen_file, "    #end %s" %(method_name))
+                    write(gen_file, "")
 
         write(gen_file, "#end class %s" %(class_name))
         write(gen_file, "")
@@ -2290,7 +2469,10 @@ class IFMapApiGenerator(object):
               %(self.__class__.__name__))
         write(gen_file, "")
         write(gen_file, "class ResourceApiGen(object):")
-        for ident in self._non_exclude_idents():
+        deferred_rpc_types = []
+        for ident in self._non_exclude_idents(exclude_types={'RpcInputType', 'RpcOutputType'}):
+            if self.__is_yang_rpc_type(ident.getElement().getSchemaType()):
+                deferred_rpc_types.append(ident)
             ident_name = ident.getName()
             method_name = ident_name.replace('-', '_')
             write(gen_file, "    def pre_%s_create(self, resource_dict):" %(method_name))
@@ -2298,58 +2480,81 @@ class IFMapApiGenerator(object):
             write(gen_file, "        Method called before %s is created" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end pre_%s_create" %(method_name))
+            write(gen_file, "    # end pre_%s_create" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def post_%s_create(self, resource_dict):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called after %s is created" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end post_%s_create" %(method_name))
+            write(gen_file, "    # end post_%s_create" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def pre_%s_read(self, resource_id):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called before %s is read" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end pre_%s_read" %(method_name))
+            write(gen_file, "    # end pre_%s_read" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def post_%s_read(self, resource_id, resource_dict):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called after %s is read" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end post_%s_read" %(method_name))
+            write(gen_file, "    # end post_%s_read" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def pre_%s_update(self, resource_id, resource_dict):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called before %s is updated" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end pre_%s_update" %(method_name))
+            write(gen_file, "    # end pre_%s_update" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def post_%s_update(self, resource_id, resource_dict):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called after %s is updated" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end post_%s_update" %(method_name))
+            write(gen_file, "    # end post_%s_update" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def pre_%s_delete(self, resource_id):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called before %s is deleted" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end pre_%s_delete" %(method_name))
+            write(gen_file, "    # end pre_%s_delete" %(method_name))
             write(gen_file, "")
             write(gen_file, "    def post_%s_delete(self, resource_id, resource_dict):" %(method_name))
             write(gen_file, '        """')
             write(gen_file, "        Method called after %s is deleted" %(ident_name))
             write(gen_file, '        """')
             write(gen_file, "        pass")
-            write(gen_file, "    #end post_%s_delete" %(method_name))
+            write(gen_file, "    # end post_%s_delete" %(method_name))
             write(gen_file, "")
-        write(gen_file, "#end class ResourceApiGen")
+            write(gen_file, "")
+        write(gen_file, "# end class ResourceApiGen")
+        if deferred_rpc_types:
+            write(gen_file, "")
+            write(gen_file, "class RpcApiGen(object):")
+            for ident in deferred_rpc_types:
+                ident_name = ident.getName()
+                ident_class_name = CamelCase(ident.getName()) + "Output"
+                method_name = ident_name.replace('-', '_') + '_execute'
+                write(gen_file, "")
+                write(gen_file, "    def %s(self , obj):" %(method_name))
+                write(gen_file, '        """')
+                write(gen_file, "        RPC Implementation %s " %(ident_name))
+                write(gen_file, "        :param obj: obj dict")
+                write(gen_file, "        :return obj: %s object" %(ident_class_name))
+                write(gen_file, '        """')
+                write(gen_file, "        pass")
+                write(gen_file, "    # end %s" %(method_name))
+                write(gen_file, "")
+            write(gen_file, "# end class ResourceApiGen")
+
+
+
+
     #end _generate_extension_impl
 
     def _generate_ifmap_db_impl(self, gen_fname, gen_type_pfx):
@@ -3437,4 +3642,6 @@ class IFMapApiGenerator(object):
         write(gen_file, "")
     #end _generate_docs_schema
 
+    def __is_yang_rpc_type(self, elem_type):
+        return elem_type in {'RPC', 'RpcInputType', 'RpcOutputType'}
 #end class IFMapApiGenerator
