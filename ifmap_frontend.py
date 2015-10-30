@@ -550,7 +550,7 @@ class IFMapApiGenerator(object):
         module_prefix = ''
         if self._module_name is not "":
             module_prefix = "%s." % self._module_name
-
+            module_prefix = module_prefix.replace('-','_')
         write(gen_file, "import %svnc_api.gen.%s_common" %(module_prefix, gen_filename_pfx))
         write(gen_file, "import %svnc_api.gen.%s_xsd" %(module_prefix, gen_filename_pfx))
         write(gen_file, "")
@@ -1338,6 +1338,7 @@ class IFMapApiGenerator(object):
         module_prefix = ""
         if self._module_name is not "":
             module_prefix = '%s.' % self._module_name
+            module_prefix = module_prefix.replace('-','_')
         write(gen_file, "# AUTO-GENERATED file from %s. Do Not Edit!" \
               %(self.__class__.__name__))
         write(gen_file, "")
