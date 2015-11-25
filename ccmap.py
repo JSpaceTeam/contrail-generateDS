@@ -21,7 +21,7 @@ class IFMapGenerator(object):
         Step 4. Generate xsd corresponding to data structures.
     """
 
-    def __init__(self, parser, genCategory, fixup_prop=False, module_name=""):
+    def __init__(self, parser, genCategory, fixup_prop=False, module_name="", es_json_file=None):
         self._Parser = parser
         self._idl_parser = None
         self._Identifiers = {}
@@ -32,6 +32,7 @@ class IFMapGenerator(object):
         self._genCategory = genCategory
         self._fixupProp = fixup_prop
         self._module_name = module_name
+        self._es_json_file = es_json_file
 
     def _BuildDataModel(self, children):
         for child in children:
@@ -173,7 +174,8 @@ class IFMapGenerator(object):
 
     def _GenerateFrontendClassDefinitions(self, xsd_root):
         apigen = IFMapApiGenerator(self._Parser, xsd_root,
-                                   self._Identifiers, self._Metadata, self._module_name)
+                                   self._Identifiers, self._Metadata, self._module_name,
+                                   self._es_json_file)
         apigen.Generate(self._Parser.outFilename)
 
     def _GenerateJavaApi(self, xsd_root):

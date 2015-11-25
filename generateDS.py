@@ -669,7 +669,7 @@ if __name__ == '__main__':
                 'namespacedef=', 'external-encoding=',
                 'member-specs=', 'no-dates', 'no-versions',
                 'no-questions', 'session=', 'generator-category=',
-                'generated-language=', 'fixup-property','module-name=','version',
+                'generated-language=', 'fixup-property','es-json-file=','module-name=','version',
                 ])
         except getopt.GetoptError, exp:
             usage()
@@ -688,6 +688,7 @@ if __name__ == '__main__':
         showVersion = False
         self.xschemaFileName = None
         self.FixUpProp = False
+        self.EsJsonFile = None
         self.moduleName = ""
         for option in options:
             if option[0] == '--session':
@@ -767,6 +768,8 @@ if __name__ == '__main__':
                 self.NoDates = True
             elif option[0] == "--fixup-property":
                 self.FixUpProp = True
+            elif option[0] == "--es-json-file":
+                self.EsJsonFile = option[1]
             elif option[0] == "--module-name":
                 self.moduleName = option[1]
             elif option[0] == '--no-versions':
@@ -1084,7 +1087,8 @@ if __name__ == '__main__':
               self.genCategory == 'ifmap-frontend' or
               self.genCategory == 'java-api' or
               self.genCategory == 'golang-api'):
-            self._Generator = IFMapGenerator(self, self.genCategory, self.FixUpProp, self.moduleName)
+            self._Generator = IFMapGenerator(self, self.genCategory, self.FixUpProp, self.moduleName,
+                                             self.EsJsonFile)
         self._Generator.setLanguage(self.genLang)
 
     def _load_config(self):

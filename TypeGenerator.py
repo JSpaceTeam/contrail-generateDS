@@ -692,7 +692,7 @@ class PyGenerator(object):
 
             wrt('%s' % astr)
         wrt('        return obj\n')
-                    
+
     # end _generateTestHelpers
 
     def generateFactory(self, wrt, prefix, name):
